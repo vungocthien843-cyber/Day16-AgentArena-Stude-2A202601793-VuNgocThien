@@ -67,18 +67,20 @@ class InjectionGuard(Middleware):
         result = call(name, args)
         if BLOCK_START not in result.content:
             return result
+
         content = result.content
         while BLOCK_START in content:
-            start = content.index(BLOCK_START)
-            end = content.find(BLOCK_END, start)
-            if end == -1:
-                content = content[:start] + PLACEHOLDER
-                break
-            content = content[:start] + PLACEHOLDER + content[end + len(BLOCK_END):]
+            start_idx = content.find(BLOCK_START)
+            end_idx = content.find(BLOCK_END, start_idx)
+            if end_idx != -1:
+                content = content[:start_idx] + PLACEHOLDER + content[end_idx + len(BLOCK_END):]
+            else:
+                content = content[:start_idx] + PLACEHOLDER
+
         return ToolResult(ok=result.ok, content=content, error=result.error)
 
     def after_agent(self, ctx, report):
-        answer = report.get("answer", "")
-        if isinstance(answer, str) and INJECTION_CANARY in answer:
-            report["answer"] = answer.replace(INJECTION_CANARY, "").strip()
+        from arena.corpus import INJECTION_CANARY
+        if "answer" in report and INJECTION_CANARY in report["answer"]:
+            report["answer"] = report["answer"].replace(INJECTION_CANARY, "")
         return report

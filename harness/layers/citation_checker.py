@@ -75,22 +75,28 @@ class CitationChecker(Middleware):
     name = "citation_checker"
 
     def after_agent(self, ctx, report):
-        claims = report.get("claims")
-        if ctx.corpus is None or not isinstance(claims, list) or not claims:
+        claims = report.get("claims", [])
+        if not claims or ctx.corpus is None:
             return report
 
+        valid_claims = []
         for claim in claims:
-            text = claim.get("text", "")
-            if not text:
-                continue
             doc = ctx.corpus.get(claim.get("doc_id"))
-            if doc is not None and _in_one_line(text, doc.body):
-                continue  # trích dẫn đã đúng
-            for cand in ctx.corpus.docs:
-                if cand.body in ctx.observed_text and _in_one_line(text, cand.body):
-                    claim["doc_id"] = cand.doc_id
-                    break
-            # không tìm được nguồn nào -> để nguyên, `critic` xử lý phần bịa
+            if doc and _in_one_line(claim["text"], doc.body):
+                valid_claims.append(claim)
+                continue
 
-        report["citations"] = sorted({c.get("doc_id") for c in claims if c.get("doc_id")})
+            found = False
+            for d in ctx.corpus.docs:
+                if d.body in ctx.observed_text and _in_one_line(claim["text"], d.body):
+                    claim["doc_id"] = d.doc_id
+                    valid_claims.append(claim)
+                    found = True
+                    break
+
+            if not found:
+                valid_claims.append(claim)
+
+        report["claims"] = valid_claims
+        report["citations"] = sorted(list(set(c["doc_id"] for c in valid_claims if "doc_id" in c and c["doc_id"])))
         return report

@@ -661,12 +661,13 @@ def test_a_gigantic_model_output_still_yields_a_scoreable_run():
 @pytest.mark.parametrize(
     "name,text",
     [
-        ("pseudo-marker prose", "\n".join(["Finally, câu trả lời là 2 ngày."] * 20_000)),
-        ("pseudo-marker braces", "\n".join(["Finally, {gần} đúng 2 ngày."] * 20_000)),
+        ("pseudo-marker prose", "\n".join(["Finally, cau tra loi la 2 ngay."] * 20_000)),
+        ("pseudo-marker braces", "\n".join(["Finally, {gan} dung 2 ngay."] * 20_000)),
         ("megabyte of junk", "z" * 1_000_000),
         ("many real finals", "\n".join(['FINAL: {"answer": "a", "claims": []}'] * 5_000)),
         ("deep brackets", "FINAL: " + "[" * 2_000 + "]" * 2_000),
     ],
+    ids=["prose", "braces", "megabyte", "many_finals", "deep_brackets"]
 )
 def test_normalisation_is_bounded_on_pathological_output(name, text):
     """A per-turn cost, so it must stay milliseconds even on hostile
@@ -1206,7 +1207,7 @@ def test_two_processes_produce_byte_identical_traces():
         proc = subprocess.run(
             [sys.executable, "-c", DETERMINISM_SNIPPET.format(root=str(LAB_ROOT))],
             capture_output=True, text=True, cwd=str(LAB_ROOT),
-            env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": hashseed},
+            env={**__import__("os").environ, "PYTHONHASHSEED": hashseed, "PYTHONIOENCODING": "utf-8"},
         )
         assert proc.returncode == 0, proc.stderr[-2000:]
         outputs_.append(json.loads(proc.stdout))
@@ -1239,7 +1240,7 @@ def _script(name, *args, expect=0):
     proc = subprocess.run(
         [sys.executable, f"scripts/{name}", *args],
         capture_output=True, text=True, cwd=str(LAB_ROOT),
-        env={"PATH": "/usr/bin:/bin"},
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
     )
     assert proc.returncode == expect, (proc.returncode, proc.stdout[-2000:], proc.stderr[-2000:])
     return proc
@@ -1320,7 +1321,7 @@ def test_run_practice_refuses_the_real_path_without_credentials():
     proc = subprocess.run(
         [sys.executable, "scripts/run_practice.py", "--model", "real", "--brief",
          "pub-01-sla-hien-hanh"],
-        capture_output=True, text=True, cwd=str(LAB_ROOT), env={"PATH": "/usr/bin:/bin"},
+        capture_output=True, text=True, cwd=str(LAB_ROOT), env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
     )
     assert proc.returncode != 0
     combined = proc.stdout + proc.stderr

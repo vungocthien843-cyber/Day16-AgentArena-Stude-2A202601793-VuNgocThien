@@ -79,30 +79,36 @@ class Critic(Middleware):
     name = "critic"
 
     def after_agent(self, ctx, report):
-        claims = report.get("claims")
-        if not isinstance(claims, list) or not claims:
-            return report
+        claims = report.get("claims", [])
+        if not isinstance(claims, list):
+            claims = []
 
-        kept = []
+        valid_claims = []
         for claim in claims:
-            text = claim.get("text", "")
-            if text and text in ctx.observed_text:
-                kept.append(claim)
-                continue
-            halves = self._split_fused(ctx, text)
-            if halves:
-                (left, left_doc), (right, right_doc) = halves
-                kept.append({"text": left, "doc_id": left_doc})
-                kept.append({"text": right, "doc_id": right_doc})
-                report["abstain"] = True
-            # else: không tách được -> đây là bịa, bỏ claim đi
+            if claim["text"] in ctx.observed_text:
+                valid_claims.append(claim)
+            else:
+                parts = claim["text"].split(" và ")
+                if len(parts) == 2 and parts[0] in ctx.observed_text and parts[1] in ctx.observed_text:
+                    doc1, doc2 = None, None
+                    for d in ctx.corpus.docs:
+                        if parts[0] in d.body: doc1 = d.doc_id
+                        if parts[1] in d.body: doc2 = d.doc_id
 
-        if not kept:
+                    if doc1 and doc2 and doc1 != doc2:
+                        valid_claims.append({"text": parts[0], "doc_id": doc1})
+                        valid_claims.append({"text": parts[1], "doc_id": doc2})
+                        report["abstain"] = True
+
+        if not valid_claims:
             report["abstain"] = True
-            report["answer"] = "Không đủ căn cứ trong tài liệu để trả lời câu hỏi này."
+            report["claims"] = []
+            report["citations"] = []
+            report["answer"] = "Không đủ thông tin để trả lời."
+        else:
+            report["claims"] = valid_claims
+            report["citations"] = sorted(list(set(c["doc_id"] for c in valid_claims)))
 
-        report["claims"] = kept
-        report["citations"] = sorted({c.get("doc_id") for c in kept if c.get("doc_id")})
         return report
 
     def _split_fused(self, ctx, text):

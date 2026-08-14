@@ -87,10 +87,9 @@ class BudgetPolicy(Middleware):
         self.reserve = max(0, int(reserve))
 
     def _spent(self, ctx) -> bool:
-        limit = ctx.max_tool_calls
-        if limit is None:
+        if ctx.max_tool_calls is None:
             return False
-        return ctx.tools.calls >= limit - self.reserve
+        return ctx.tools.calls >= ctx.max_tool_calls - self.reserve
 
     def before_model(self, ctx, messages):
         if not self._spent(ctx):
@@ -100,4 +99,4 @@ class BudgetPolicy(Middleware):
     def wrap_tool_call(self, ctx, call, name, args):
         if not self._spent(ctx):
             return call(name, args)
-        return ToolResult(ok=False, content="", error="ngân sách công cụ đã hết")
+        return ToolResult(ok=False, content="", error="Ngân sách công cụ đã hết.")
