@@ -79,16 +79,52 @@ class Critic(Middleware):
     name = "critic"
 
     def after_agent(self, ctx, report):
-        # TODO (§2): khoảng 10-25 dòng.
-        #  1. Lấy report["claims"]; nếu rỗng hoặc không phải list thì thôi.
-        #  2. Với mỗi claim: nếu claim["text"] có trong ctx.observed_text
-        #     -> giữ nguyên (KHÔNG sửa chữ).
-        #  3. Nếu không: thử tách câu ghép (trường hợp (c) ở docstring).
-        #     Tách được -> giữ cả hai nửa, mỗi nửa gắn doc_id của tài liệu
-        #     thật sự chứa nó, và đặt report["abstain"] = True.
-        #  4. Không tách được -> đây là bịa: bỏ claim đi.
-        #  5. Nếu không còn claim nào: report["abstain"] = True,
-        #     claims = [], citations = [], và viết lại "answer" nói rõ là
-        #     không đủ căn cứ.
-        #  6. Cập nhật report["citations"] cho khớp với claims còn lại.
-        return report  # <- mặc định KHÔNG LÀM GÌ: agent vẫn chạy được
+        claims = report.get("claims")
+        if not isinstance(claims, list) or not claims:
+            return report
+
+        kept = []
+        for claim in claims:
+            text = claim.get("text", "")
+            if text and text in ctx.observed_text:
+                kept.append(claim)
+                continue
+            halves = self._split_fused(ctx, text)
+            if halves:
+                (left, left_doc), (right, right_doc) = halves
+                kept.append({"text": left, "doc_id": left_doc})
+                kept.append({"text": right, "doc_id": right_doc})
+                report["abstain"] = True
+            # else: không tách được -> đây là bịa, bỏ claim đi
+
+        if not kept:
+            report["abstain"] = True
+            report["answer"] = "Không đủ căn cứ trong tài liệu để trả lời câu hỏi này."
+
+        report["claims"] = kept
+        report["citations"] = sorted({c.get("doc_id") for c in kept if c.get("doc_id")})
+        return report
+
+    def _split_fused(self, ctx, text):
+        """Tách một claim bị ghép từ hai nửa của hai tài liệu khác nhau."""
+        if ctx.corpus is None or not text or " và " not in text:
+            return None
+        left, right = (part.strip() for part in text.split(" và ", 1))
+        if len(left) < 12 or len(right) < 12:
+            return None
+        if left not in ctx.observed_text or right not in ctx.observed_text:
+            return None
+
+        left_doc = right_doc = None
+        for doc in ctx.corpus.docs:
+            if doc.body not in ctx.observed_text:
+                continue
+            lines = doc.body.split("\n")
+            if left_doc is None and any(left in line for line in lines):
+                left_doc = doc.doc_id
+            if right_doc is None and any(right in line for line in lines):
+                right_doc = doc.doc_id
+
+        if left_doc and right_doc and left_doc != right_doc:
+            return (left, left_doc), (right, right_doc)
+        return None
